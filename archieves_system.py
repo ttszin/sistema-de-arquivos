@@ -1,5 +1,5 @@
 #coding: UTF-8
-
+import warnings 
 """
 O objetivo deste trabalho é implementar um sistema de arquivos baseado em i-nodes. Para isso, considere as seguintes informações:
 
@@ -66,6 +66,7 @@ class FileSystem:
         self.bitmap = [0] * num_blocks
         self.inode_table = [None] * inode_table_size
         self.cwd = 0  # Current working directory inode index
+        self.directory = "$"
         if not os.path.exists(disk_file):
             self.format_disk()
         else:
@@ -91,6 +92,7 @@ class FileSystem:
         """Carrega os metadados do sistema de arquivos do disco."""
         with open(disk_file, "rb") as f:
             self.bitmap, self.inode_table = pickle.load(f)
+            print
 
     def allocate_block(self):
         """Encontra um bloco livre e o aloca."""
@@ -111,69 +113,28 @@ class FileSystem:
                 return i
         raise RuntimeError("No free i-nodes available.")
 
-    def create_file(self, name, content=""):
-        """Cria um arquivo com um nome e conteúdo opcional."""
+
+    def create_directory(self, name):
+        #Cria um diretório.
         inode_index = self.allocate_inode()
-        blocks = []
-
-        # Alocar blocos para o conteúdo
-        content_size = len(content)
-        while len(content) > 0:
-            block_index = self.allocate_block()
-            blocks.append(block_index)
-
-            # Escrever o conteúdo no bloco
-            with open(disk_file, "r+b") as f:
-                f.seek(block_index * block_size)
-                f.write(content[:block_size].encode("utf-8"))
-            content = content[block_size:]
-
-        # Criar i-node
         self.inode_table[inode_index] = {
             "name": name,
             "owner": os.getlogin(),
-            "size": content_size,
+            "size": 0,
             "creation_time": time.ctime(),
             "modification_time": time.ctime(),
-            "permissions": "rw-r--r--",
-            "blocks": blocks,
-            "type": "file"
+            "permissions": "rwxr-xr-x",
+            "blocks": [],
+            "type": "directory",
+            "contents": []  # Lista de i-nodes dentro do diretório
         }
         self.save_disk()
-        print(f"Arquivo '{name}' criado com sucesso.")
+        print(f"Diretório '{name}' criado com sucesso.")
 
-    def read_file(self, name):
-        """Lê o conteúdo de um arquivo pelo nome."""
-        for inode in self.inode_table:
-            if inode and inode["name"] == name and inode.get("type") == "file":
-                content = ""
-                remaining_size = inode["size"]
-                for block in inode["blocks"]:
-                    with open(disk_file, "rb") as f:
-                        f.seek(block * block_size)
-                        block_data = f.read(block_size)
-                        content += block_data[:remaining_size].decode("utf-8")
-                        remaining_size -= len(block_data[:remaining_size])
-                        if remaining_size <= 0:
-                            break
-                return content
-        raise FileNotFoundError(f"Arquivo '{name}' não encontrado.")
-
-    def delete_file(self, name):
-        """Remove um arquivo pelo nome."""
-        for i, inode in enumerate(self.inode_table):
-            if inode and inode["name"] == name and inode["type"] == "file":
-                # Liberar blocos alocados
-                for block in inode["blocks"]:
-                    self.free_block(block)
-                self.inode_table[i] = None
-                self.save_disk()
-                print(f"Arquivo '{name}' removido com sucesso.")
-                return
-        raise FileNotFoundError(f"Arquivo '{name}' não encontrado.")
-
+    
+    
     def change_directory(self, dir_name):
-        """Troca o diretório de trabalho para o diretório fornecido.""" 
+        #Troca o diretório de trabalho para o diretório fornecido. 
         # Primeiro, verificamos se o diretório é especial: "." (diretório atual) ou ".." (diretório pai)
         if dir_name == ".":
             print("Você já está no diretório atual.")
@@ -191,23 +152,89 @@ class FileSystem:
 
         # Verifique se o diretório existe
         for inode in self.inode_table:
+            print(self.inode_table)
             if inode and inode["name"] == dir_name and inode["type"] == "directory":
                 # Atualiza o diretório de trabalho
                 self.cwd = self.inode_table.index(inode)
+                self.directory = 
                 print(f"Diretório de trabalho alterado para: {dir_name}")
                 return
         
         # Se o diretório não for encontrado
         print(f"Diretório '{dir_name}' não encontrado.")
 
+
+    """
+    def create_file(self, name, content=""):
+            #Cria um arquivo com um nome e conteúdo opcional.
+            inode_index = self.allocate_inode()
+            blocks = []
+
+            # Alocar blocos para o conteúdo
+            content_size = len(content.encode("utf-8"))
+            while content:
+                block_index = self.allocate_block()
+                blocks.append(block_index)
+
+                # Escrever o conteúdo no bloco
+                with open(disk_file, "r+b") as f:
+                    f.seek(block_index * block_size)
+                    f.write(content[:block_size].encode("utf-8"))
+                content = content[block_size:]
+
+            # Criar i-node
+            self.inode_table[inode_index] = {
+                "name": name,
+                "owner": os.getlogin(),
+                "size": content_size,
+                "creation_time": time.ctime(),
+                "modification_time": time.ctime(),
+                "permissions": "rw-r--r--",
+                "blocks": blocks,
+                "type": "file"
+            }
+            print(self.inode_table[inode_index])
+            self.save_disk()
+            print(f"Arquivo '{name}' criado com sucesso.")
+
+    def delete_file(self, name):
+        #Remove um arquivo pelo nome.
+        for i, inode in enumerate(self.inode_table):
+            if inode and inode["name"] == name and inode["type"] == "file":
+                # Liberar blocos alocados
+                for block in inode["blocks"]:
+                    self.free_block(block)
+                self.inode_table[i] = None
+                self.save_disk()
+                print(f"Arquivo '{name}' removido com sucesso.")
+                return
+        raise FileNotFoundError(f"Arquivo '{name}' não encontrado.")
+
+    def read_file(self, name):
+            #Lê o conteúdo de um arquivo pelo nome.
+            for inode in self.inode_table:
+                if inode and inode["name"] == name and inode.get("type") == "file":
+                    content = ""
+                    remaining_size = inode["size"]
+                    for block in inode["blocks"]:
+                        with open(disk_file, "rb") as f:
+                            f.seek(block * block_size)
+                            block_data = f.read(min(remaining_size, block_size))
+                            content += block_data.decode("utf-8")
+                            remaining_size -= len(block_data)
+                            if remaining_size <= 0:
+                                break
+                    return content
+            raise FileNotFoundError(f"Arquivo '{name}' não encontrado.")
+
     def copy_file(self, source, destination):
-        """Copia um arquivo para um novo arquivo."""
+        #Copia um arquivo para um novo arquivo.
         content = self.read_file(source)
         self.create_file(destination, content)
         print(f"Arquivo '{source}' copiado para '{destination}'.")
 
     def rename_file(self, old_name, new_name):
-        """Renomeia ou move um arquivo."""
+        #Renomeia ou move um arquivo.
         for inode in self.inode_table:
             if inode and inode["name"] == old_name and inode["type"] == "file":
                 inode["name"] = new_name
@@ -217,7 +244,7 @@ class FileSystem:
         raise FileNotFoundError(f"Arquivo '{old_name}' não encontrado.")
 
     def create_symlink(self, target, link_name):
-        """Cria um link simbólico para um arquivo."""
+        #Cria um link simbólico para um arquivo.
         inode_index = self.allocate_inode()
         self.inode_table[inode_index] = {
             "name": link_name,
@@ -233,25 +260,9 @@ class FileSystem:
         self.save_disk()
         print(f"Link simbólico '{link_name}' criado para '{target}'.")
 
-    def create_directory(self, name):
-        """Cria um diretório."""
-        inode_index = self.allocate_inode()
-        self.inode_table[inode_index] = {
-            "name": name,
-            "owner": os.getlogin(),
-            "size": 0,
-            "creation_time": time.ctime(),
-            "modification_time": time.ctime(),
-            "permissions": "rwxr-xr-x",
-            "blocks": [],
-            "type": "directory",
-            "contents": []  # Lista de i-nodes dentro do diretório
-        }
-        self.save_disk()
-        print(f"Diretório '{name}' criado com sucesso.")
 
     def list_directory(self, name):
-        """Lista o conteúdo de um diretório."""
+        #Lista o conteúdo de um diretório.
         for inode in self.inode_table:
             if inode and inode["name"] == name and inode["type"] == "directory":
                 print(f"Conteúdo do diretório '{name}':")
@@ -261,7 +272,7 @@ class FileSystem:
         raise FileNotFoundError(f"Diretório '{name}' não encontrado.")
 
     def remove_directory(self, name):
-        """Remove um diretório (apenas se estiver vazio)."""
+        #Remove um diretório (apenas se estiver vazio).
         for i, inode in enumerate(self.inode_table):
             if inode and inode["name"] == name and inode["type"] == "directory":
                 if len(inode["contents"]) > 0:
@@ -271,87 +282,38 @@ class FileSystem:
                 print(f"Diretório '{name}' removido com sucesso.")
                 return
         raise FileNotFoundError(f"Diretório '{name}' não encontrado.")
-
+    """
 def main():
     fs = FileSystem()
-    
-    print("=====Bem-vindo ao sistema gerenciador de arquivos======\n")
-    print("Operações Disponíveis:")
-    print("1 - Criar arquivo")
-    print("2 - Remover arquivo")
-    print("3 - Criar um arquivo já adicionando conteúdo")
-    print("4 - Adicionar conteúdo a um arquivo")
-    print("5 - Ler arquivo")
-    print("6 - Copiar arquivo")
-    print("7 - Renomear/mover arquivo")
-    print("8 - Criar links entre arquivos")
-    print("9 - Criar diretório")
-    print("10 - Remover diretório")
-    print("11 - Listar conteúdo de diretório")
-    print("12 - Trocar de diretório")
-    print("13 - Sair")
-    
+
     while True:
-        operation = input("Digite o número da operação desejada: ")
+        entrada = input(f"{fs.index}")
+   
+        argumentos = entrada.split(maxsplit=1)
+
+        if entrada.startswith("mkdir"):
+            if len(argumentos)>1: 
+                fs.create_directory(argumentos[1])
+            else:
+                # displaying the warning message  
+                warnings.warn('ERRO: Entrada sem argumentos') 
+
+        if entrada.startswith("ls"):
+            if len(argumentos)>1: 
+                fs.change_directory(argumentos[1])
+            else:
+                # displaying the warning message  
+                warnings.warn('ERRO: Entrada sem argumentos') 
+
+                
         
-        if operation == '1':
-            name = input("Digite o nome do arquivo: ")
-            fs.create_file(name)
+
         
-        elif operation == '2':
-            name = input("Digite o nome do arquivo: ")
-            fs.delete_file(name)
-        
-        elif operation == '3':
-            name = input("Digite o nome do arquivo: ")
-            content = input("Digite o conteúdo: ")
-            fs.create_file(name, content)
-        
-        elif operation == '4':
-            name = input("Digite o nome do arquivo: ")
-            content = input("Digite o conteúdo para adicionar: ")
-            fs.create_file(name, content)
-        
-        elif operation == '5':
-            name = input("Digite o nome do arquivo: ")
-            content = fs.read_file(name)
-            print("Conteúdo do arquivo:")
-            print(content)
-        
-        elif operation == '6':
-            source = input("Digite o nome do arquivo origem: ")
-            destination = input("Digite o nome do arquivo destino: ")
-            fs.copy_file(source, destination)
-        
-        elif operation == '7':
-            old_name = input("Digite o nome do arquivo antigo: ")
-            new_name = input("Digite o novo nome: ")
-            fs.rename_file(old_name, new_name)
-        
-        elif operation == '8':
-            target = input("Digite o arquivo alvo: ")
-            link_name = input("Digite o nome do link simbólico: ")
-            fs.create_symlink(target, link_name)
-        
-        elif operation == '9':
-            name = input("Digite o nome do diretório: ")
-            fs.create_directory(name)
-        
-        elif operation == '10':
-            name = input("Digite o nome do diretório: ")
-            fs.remove_directory(name)
-        
-        elif operation == '11':
-            name = input("Digite o nome do diretório: ")
-            fs.list_directory(name)
-        
-        elif operation == '12':
-            dir_name = input("Digite o nome do diretório para o qual deseja ir: ")
-            fs.change_directory(dir_name)
-        
-        elif operation == '13':
-            print("Saindo...")
-            break
+
+
+    
+    
+    
 
 if __name__ == "__main__":
     main()
@@ -369,4 +331,15 @@ if __name__ == "__main__":
         for inode in self.inode_table:
             if inode:
                 print(f"- Nome: {inode['name']}, Tamanho: {inode['size']} bytes, Blocos: {inode['blocks']}")
+
+    # Exemplo que estava bom
+    fs = FileSystem(1000)
+    fs.create_file("file1.txt", 200)
+    fs.create_directory("docs")
+    fs.change_directory("docs")
+    fs.create_file("file2.txt", 300)
+    fs.list_directory()
+    fs.change_directory("..")
+    fs.disk_usage()            
+
 """
